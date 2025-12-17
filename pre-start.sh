@@ -38,13 +38,13 @@ fi
 
 echo "[INFO] Found ComfyUI Manager at: ${MANAGER_DIR}"
 
-# Install the ping extension into ComfyUI's web extensions folder
-PING_SCRIPT="${MANAGER_DIR}/comfyui-manager-ping.js"
-EXTENSIONS_DIR="/root/ComfyUI/web/extensions"
-if [ -f "${PING_SCRIPT}" ]; then
-    mkdir -p "${EXTENSIONS_DIR}"
-    cp "${PING_SCRIPT}" "${EXTENSIONS_DIR}/"
-    echo "[INFO] Installed activity ping extension to ${EXTENSIONS_DIR}/"
+# Install the keepalive custom node into ComfyUI's custom_nodes folder
+KEEPALIVE_SRC="${MANAGER_DIR}/comfyui-manager-keepalive"
+KEEPALIVE_DST="/root/ComfyUI/custom_nodes/comfyui-manager-keepalive"
+if [ -d "${KEEPALIVE_SRC}" ]; then
+    mkdir -p "${KEEPALIVE_DST}"
+    cp -r "${KEEPALIVE_SRC}/." "${KEEPALIVE_DST}/"
+    echo "[INFO] Installed keepalive extension to ${KEEPALIVE_DST}/"
 fi
 
 # Set manager environment variables
