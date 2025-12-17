@@ -5,10 +5,8 @@ import signal
 import subprocess
 import threading
 import logging
-from flask import Flask, request, Response, redirect, render_template, jsonify
-from flask_sock import Sock
+from flask import Flask, request, Response, render_template, jsonify
 import requests
-from websocket import create_connection, WebSocketConnectionClosedException
 
 from config import (
     COMFYUI_PATH, COMFYUI_PORT, COMFYUI_HOST, COMFYUI_ARGS,
@@ -19,7 +17,6 @@ logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(
 logger = logging.getLogger(__name__)
 
 app = Flask(__name__)
-sock = Sock(app)
 
 
 class ComfyUIManager:
@@ -56,7 +53,8 @@ class ComfyUIManager:
             self.state = "starting"
             logger.info("Starting ComfyUI...")
 
-            cmd = [sys.executable, "main.py", "--listen", COMFYUI_HOST, "--port", str(COMFYUI_PORT)]
+            # ComfyUI listens on 0.0.0.0 so we can access it, but we proxy most requests
+            cmd = [sys.executable, "main.py", "--listen", "0.0.0.0", "--port", str(COMFYUI_PORT)]
             if COMFYUI_ARGS:
                 cmd.extend(COMFYUI_ARGS.split() if isinstance(COMFYUI_ARGS, str) else COMFYUI_ARGS)
 
@@ -97,7 +95,7 @@ class ComfyUIManager:
         """Wait for ComfyUI to be ready to accept requests."""
         timeout = timeout or STARTUP_TIMEOUT
         start = time.time()
-        url = f"http://{COMFYUI_HOST}:{COMFYUI_PORT}/system_stats"
+        url = f"http://127.0.0.1:{COMFYUI_PORT}/system_stats"
 
         while time.time() - start < timeout:
             try:
@@ -195,7 +193,7 @@ def ensure_comfyui_running():
 @app.route("/manager/")
 def manager_dashboard():
     """Render manager dashboard."""
-    return render_template("index.html")
+    return render_template("index.html", comfyui_port=COMFYUI_PORT)
 
 
 @app.route("/manager/api/status")
@@ -232,175 +230,154 @@ def manager_static(path):
     return app.send_static_file(path)
 
 
-# --- ComfyUI Proxy at root (/) ---
+# --- Landing page that checks status and redirects ---
 
-@app.route("/", defaults={"path": ""})
-@app.route("/<path:path>", methods=["GET", "POST", "PUT", "DELETE", "PATCH"])
-def proxy_comfyui(path):
-    """Proxy requests to ComfyUI at root path."""
-    # Don't proxy manager routes
-    if path.startswith("manager"):
-        return Response("Not found", status=404)
+@app.route("/")
+def landing():
+    """Landing page - starts ComfyUI and redirects to it."""
+    if not manager.is_running():
+        status = manager.get_status()
+        if status["state"] == "stopped":
+            logger.info("Auto-starting ComfyUI on landing page visit")
+            manager.start()
+            # Show starting page
+            return Response(
+                f"""
+                <!DOCTYPE html>
+                <html>
+                <head>
+                    <title>Starting ComfyUI...</title>
+                    <meta http-equiv="refresh" content="3">
+                    <style>
+                        body {{
+                            font-family: system-ui;
+                            display: flex;
+                            align-items: center;
+                            justify-content: center;
+                            height: 100vh;
+                            margin: 0;
+                            background: #1a1a2e;
+                            color: #eee;
+                        }}
+                        .loader {{ text-align: center; }}
+                        .spinner {{
+                            width: 50px;
+                            height: 50px;
+                            border: 4px solid #333;
+                            border-top-color: #4ade80;
+                            border-radius: 50%;
+                            animation: spin 1s linear infinite;
+                            margin: 0 auto 20px;
+                        }}
+                        @keyframes spin {{ to {{ transform: rotate(360deg); }} }}
+                        a {{ color: #4ade80; }}
+                    </style>
+                </head>
+                <body>
+                    <div class="loader">
+                        <div class="spinner"></div>
+                        <h2>Starting ComfyUI...</h2>
+                        <p>This page will refresh automatically.</p>
+                        <p><a href="/manager/">Go to Manager</a></p>
+                    </div>
+                </body>
+                </html>
+                """,
+                status=200,
+                content_type="text/html"
+            )
+        elif status["state"] == "starting":
+            # Still starting, show wait page
+            return Response(
+                f"""
+                <!DOCTYPE html>
+                <html>
+                <head>
+                    <title>Starting ComfyUI...</title>
+                    <meta http-equiv="refresh" content="2">
+                    <style>
+                        body {{
+                            font-family: system-ui;
+                            display: flex;
+                            align-items: center;
+                            justify-content: center;
+                            height: 100vh;
+                            margin: 0;
+                            background: #1a1a2e;
+                            color: #eee;
+                        }}
+                        .loader {{ text-align: center; }}
+                        .spinner {{
+                            width: 50px;
+                            height: 50px;
+                            border: 4px solid #333;
+                            border-top-color: #4ade80;
+                            border-radius: 50%;
+                            animation: spin 1s linear infinite;
+                            margin: 0 auto 20px;
+                        }}
+                        @keyframes spin {{ to {{ transform: rotate(360deg); }} }}
+                        a {{ color: #4ade80; }}
+                    </style>
+                </head>
+                <body>
+                    <div class="loader">
+                        <div class="spinner"></div>
+                        <h2>ComfyUI is starting...</h2>
+                        <p>Please wait, this page will redirect when ready.</p>
+                        <p><a href="/manager/">Go to Manager</a></p>
+                    </div>
+                </body>
+                </html>
+                """,
+                status=200,
+                content_type="text/html"
+            )
 
-    if not ensure_comfyui_running():
-        # Show a nice "starting" page instead of error
-        return Response(
-            """
-            <!DOCTYPE html>
-            <html>
-            <head>
-                <title>Starting ComfyUI...</title>
-                <meta http-equiv="refresh" content="3">
-                <style>
-                    body {
-                        font-family: system-ui;
-                        display: flex;
-                        align-items: center;
-                        justify-content: center;
-                        height: 100vh;
-                        margin: 0;
-                        background: #1a1a2e;
-                        color: #eee;
-                    }
-                    .loader { text-align: center; }
-                    .spinner {
-                        width: 50px;
-                        height: 50px;
-                        border: 4px solid #333;
-                        border-top-color: #4ade80;
-                        border-radius: 50%;
-                        animation: spin 1s linear infinite;
-                        margin: 0 auto 20px;
-                    }
-                    @keyframes spin { to { transform: rotate(360deg); } }
-                </style>
-            </head>
-            <body>
-                <div class="loader">
-                    <div class="spinner"></div>
-                    <h2>Starting ComfyUI...</h2>
-                    <p>This page will refresh automatically.</p>
-                    <p><a href="/manager/" style="color: #4ade80;">Go to Manager</a></p>
-                </div>
-            </body>
-            </html>
-            """,
-            status=503,
-            content_type="text/html"
-        )
-
-    # Build target URL
-    target_url = f"http://{COMFYUI_HOST}:{COMFYUI_PORT}/{path}"
-    if request.query_string:
-        target_url += f"?{request.query_string.decode()}"
-
-    # Forward the request
-    try:
-        resp = requests.request(
-            method=request.method,
-            url=target_url,
-            headers={k: v for k, v in request.headers if k.lower() not in ['host', 'content-length']},
-            data=request.get_data(),
-            cookies=request.cookies,
-            allow_redirects=False,
-            timeout=300
-        )
-
-        # Build response
-        excluded_headers = ['content-encoding', 'content-length', 'transfer-encoding', 'connection']
-        headers = [(k, v) for k, v in resp.raw.headers.items() if k.lower() not in excluded_headers]
-
-        return Response(resp.content, resp.status_code, headers)
-
-    except requests.RequestException as e:
-        logger.error(f"Proxy error: {e}")
-        return Response(f"Proxy error: {e}", status=502)
+    # ComfyUI is running, redirect to it directly
+    manager.reset_idle_timer()
+    # Redirect to ComfyUI's actual port
+    host = request.host.split(':')[0]  # Get hostname without port
+    return Response(
+        f"""
+        <!DOCTYPE html>
+        <html>
+        <head>
+            <title>Redirecting to ComfyUI...</title>
+            <meta http-equiv="refresh" content="0; url=http://{host}:{COMFYUI_PORT}/">
+            <style>
+                body {{
+                    font-family: system-ui;
+                    display: flex;
+                    align-items: center;
+                    justify-content: center;
+                    height: 100vh;
+                    margin: 0;
+                    background: #1a1a2e;
+                    color: #eee;
+                }}
+                a {{ color: #4ade80; }}
+            </style>
+        </head>
+        <body>
+            <div>
+                <p>Redirecting to <a href="http://{host}:{COMFYUI_PORT}/">ComfyUI</a>...</p>
+            </div>
+        </body>
+        </html>
+        """,
+        status=200,
+        content_type="text/html"
+    )
 
 
-# --- WebSocket Proxy ---
+# --- Activity tracking endpoint (called by ComfyUI frontend) ---
 
-@sock.route("/ws")
-def ws_proxy(ws):
-    """Proxy WebSocket connections to ComfyUI."""
-    if not ensure_comfyui_running():
-        ws.close()
-        return
-
-    # Get client ID from query string if present
-    client_id = request.args.get("clientId", "")
-    ws_url = f"ws://{COMFYUI_HOST}:{COMFYUI_PORT}/ws"
-    if client_id:
-        ws_url += f"?clientId={client_id}"
-
-    try:
-        comfy_ws = create_connection(ws_url, timeout=10)
-    except Exception as e:
-        logger.error(f"Failed to connect to ComfyUI WebSocket: {e}")
-        ws.close()
-        return
-
-    stop_event = threading.Event()
-
-    def forward_to_comfy():
-        """Forward messages from client to ComfyUI."""
-        try:
-            while not stop_event.is_set():
-                try:
-                    data = ws.receive(timeout=1)
-                    if data is None:
-                        break
-                    manager.reset_idle_timer()
-                    if isinstance(data, bytes):
-                        comfy_ws.send_binary(data)
-                    else:
-                        comfy_ws.send(data)
-                except TimeoutError:
-                    continue
-        except Exception as e:
-            logger.debug(f"Client->ComfyUI forward ended: {e}")
-        finally:
-            stop_event.set()
-
-    def forward_to_client():
-        """Forward messages from ComfyUI to client."""
-        try:
-            while not stop_event.is_set():
-                try:
-                    comfy_ws.settimeout(1)
-                    opcode, data = comfy_ws.recv_data(control_frame=False)
-                    if data is None:
-                        break
-                    manager.reset_idle_timer()
-                    # opcode 1 = text, 2 = binary
-                    if opcode == 2:  # Binary
-                        ws.send(data)
-                    else:  # Text
-                        if isinstance(data, bytes):
-                            data = data.decode('utf-8')
-                        ws.send(data)
-                except TimeoutError:
-                    continue
-                except WebSocketConnectionClosedException:
-                    break
-        except Exception as e:
-            logger.debug(f"ComfyUI->Client forward ended: {e}")
-        finally:
-            stop_event.set()
-
-    # Start forwarding threads
-    t1 = threading.Thread(target=forward_to_comfy, daemon=True)
-    t2 = threading.Thread(target=forward_to_client, daemon=True)
-    t1.start()
-    t2.start()
-
-    # Wait for either thread to finish
-    stop_event.wait()
-
-    # Cleanup
-    try:
-        comfy_ws.close()
-    except:
-        pass
+@app.route("/manager/api/ping", methods=["POST", "GET"])
+def api_ping():
+    """Reset idle timer - can be called periodically by frontend."""
+    manager.reset_idle_timer()
+    return jsonify({"success": True})
 
 
 def shutdown_handler(signum, frame):
@@ -416,8 +393,12 @@ if __name__ == "__main__":
 
     logger.info(f"Starting ComfyUI Manager on port {MANAGER_PORT}")
     logger.info(f"ComfyUI path: {COMFYUI_PATH}")
+    logger.info(f"ComfyUI will run on port: {COMFYUI_PORT}")
     logger.info(f"Idle timeout: {IDLE_TIMEOUT}s")
-    logger.info(f"Manager UI: http://localhost:{MANAGER_PORT}/manager/")
-    logger.info(f"ComfyUI: http://localhost:{MANAGER_PORT}/")
+    logger.info(f"")
+    logger.info(f"Access URLs:")
+    logger.info(f"  Landing page: http://localhost:{MANAGER_PORT}/")
+    logger.info(f"  Manager UI:   http://localhost:{MANAGER_PORT}/manager/")
+    logger.info(f"  ComfyUI:      http://localhost:{COMFYUI_PORT}/ (when running)")
 
     app.run(host="0.0.0.0", port=MANAGER_PORT, threaded=True)

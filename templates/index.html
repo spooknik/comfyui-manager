@@ -35,17 +35,18 @@
         <div class="actions">
             <button id="start-btn" class="btn btn-start" onclick="startComfyUI()">Start</button>
             <button id="stop-btn" class="btn btn-stop" onclick="stopComfyUI()">Stop</button>
-            <a href="/" target="_blank" class="btn btn-open" id="open-btn">Open ComfyUI</a>
+            <a href="#" class="btn btn-open" id="open-btn" onclick="openComfyUI(); return false;">Open ComfyUI</a>
         </div>
 
         <div class="info">
             <p>ComfyUI will automatically stop after <span id="timeout-display">--</span> of inactivity.</p>
-            <p>Visiting <a href="/">the root URL</a> will auto-start ComfyUI if stopped.</p>
+            <p>Manager: port 5000 | ComfyUI: port 8188</p>
         </div>
     </div>
 
     <script>
         let currentState = 'unknown';
+        const comfyuiPort = {{ comfyui_port }};
 
         function formatTime(seconds) {
             if (seconds <= 0) return '--';
@@ -55,6 +56,19 @@
                 return `${mins}m ${secs}s`;
             }
             return `${secs}s`;
+        }
+
+        function getComfyUIUrl() {
+            const host = window.location.hostname;
+            return `http://${host}:${comfyuiPort}/`;
+        }
+
+        function openComfyUI() {
+            if (currentState === 'running') {
+                window.open(getComfyUIUrl(), '_blank');
+            } else {
+                alert('ComfyUI is not running. Click Start first.');
+            }
         }
 
         function updateUI(status) {
@@ -75,18 +89,21 @@
                     startBtn.disabled = true;
                     stopBtn.disabled = false;
                     openBtn.classList.remove('disabled');
+                    openBtn.href = getComfyUIUrl();
                     break;
                 case 'starting':
                     statusText.textContent = 'Starting...';
                     startBtn.disabled = true;
                     stopBtn.disabled = true;
                     openBtn.classList.add('disabled');
+                    openBtn.href = '#';
                     break;
                 case 'stopped':
                     statusText.textContent = 'Stopped';
                     startBtn.disabled = false;
                     stopBtn.disabled = true;
                     openBtn.classList.add('disabled');
+                    openBtn.href = '#';
                     break;
             }
 
