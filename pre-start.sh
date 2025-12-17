@@ -23,13 +23,20 @@ if ! python3 -c "import flask_sock" 2>/dev/null; then
     pip install flask flask-sock requests websocket-client
 fi
 
-# Check if manager files exist
-if [ ! -f "/root/comfyui-manager/app.py" ]; then
-    echo "[ERROR] ComfyUI Manager not found at /root/comfyui-manager/"
-    echo "[ERROR] Please copy the comfyui-manager folder to /root/"
+# Find manager location - check both possible paths
+MANAGER_DIR="/root/ComfyUI/comfyui-manager"
+if [ ! -f "${MANAGER_DIR}/app.py" ]; then
+    MANAGER_DIR="/root/comfyui-manager"
+fi
+
+if [ ! -f "${MANAGER_DIR}/app.py" ]; then
+    echo "[ERROR] ComfyUI Manager not found!"
+    echo "[ERROR] Checked: /root/ComfyUI/comfyui-manager/ and /root/comfyui-manager/"
     echo "[INFO] Falling back to standard ComfyUI startup..."
     return 0
 fi
+
+echo "[INFO] Found ComfyUI Manager at: ${MANAGER_DIR}"
 
 # Set manager environment variables
 export COMFYUI_PATH="/root/ComfyUI"
@@ -46,5 +53,5 @@ echo "[INFO] - Idle timeout: ${IDLE_TIMEOUT}s"
 echo "########################################"
 
 # Start the manager (this blocks, so the entrypoint's ComfyUI command never runs)
-cd /root/comfyui-manager
+cd "${MANAGER_DIR}"
 exec python3 app.py
