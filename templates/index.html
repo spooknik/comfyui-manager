@@ -4,7 +4,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>ComfyUI Manager</title>
-    <link rel="stylesheet" href="/static/style.css">
+    <link rel="stylesheet" href="/manager/static/style.css">
 </head>
 <body>
     <div class="container">
@@ -35,12 +35,12 @@
         <div class="actions">
             <button id="start-btn" class="btn btn-start" onclick="startComfyUI()">Start</button>
             <button id="stop-btn" class="btn btn-stop" onclick="stopComfyUI()">Stop</button>
-            <a href="/comfy/" target="_blank" class="btn btn-open" id="open-btn">Open ComfyUI</a>
+            <a href="/" target="_blank" class="btn btn-open" id="open-btn">Open ComfyUI</a>
         </div>
 
         <div class="info">
             <p>ComfyUI will automatically stop after <span id="timeout-display">--</span> of inactivity.</p>
-            <p>Visiting <a href="/comfy/">/comfy/</a> will auto-start ComfyUI if stopped.</p>
+            <p>Visiting <a href="/">the root URL</a> will auto-start ComfyUI if stopped.</p>
         </div>
     </div>
 

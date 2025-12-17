@@ -57,7 +57,8 @@ class ComfyUIManager:
             logger.info("Starting ComfyUI...")
 
             cmd = [sys.executable, "main.py", "--listen", COMFYUI_HOST, "--port", str(COMFYUI_PORT)]
-            cmd.extend(COMFYUI_ARGS)
+            if COMFYUI_ARGS:
+                cmd.extend(COMFYUI_ARGS.split() if isinstance(COMFYUI_ARGS, str) else COMFYUI_ARGS)
 
             try:
                 self.process = subprocess.Popen(
@@ -176,13 +177,20 @@ class ComfyUIManager:
 manager = ComfyUIManager()
 
 
-# --- Manager Routes ---
+def ensure_comfyui_running():
+    """Ensure ComfyUI is running, start if needed."""
+    if not manager.is_running():
+        status = manager.get_status()
+        if status["state"] == "stopped":
+            logger.info("Auto-starting ComfyUI on request")
+            manager.start()
+            if not manager.wait_for_ready():
+                return False
+    manager.reset_idle_timer()
+    return True
 
-@app.route("/")
-def index():
-    """Redirect root to manager dashboard."""
-    return redirect("/manager/")
 
+# --- Manager Routes (under /manager/) ---
 
 @app.route("/manager/")
 def manager_dashboard():
@@ -217,27 +225,69 @@ def api_stop():
     return jsonify({"success": True, "message": "Stopped"})
 
 
-# --- ComfyUI Proxy Routes ---
-
-def ensure_comfyui_running():
-    """Ensure ComfyUI is running, start if needed."""
-    if not manager.is_running():
-        status = manager.get_status()
-        if status["state"] == "stopped":
-            logger.info("Auto-starting ComfyUI on request")
-            manager.start()
-            if not manager.wait_for_ready():
-                return False
-    manager.reset_idle_timer()
-    return True
+# Serve manager static files
+@app.route("/manager/static/<path:path>")
+def manager_static(path):
+    """Serve manager static files."""
+    return app.send_static_file(path)
 
 
-@app.route("/comfy/", defaults={"path": ""})
-@app.route("/comfy/<path:path>", methods=["GET", "POST", "PUT", "DELETE", "PATCH"])
+# --- ComfyUI Proxy at root (/) ---
+
+@app.route("/", defaults={"path": ""})
+@app.route("/<path:path>", methods=["GET", "POST", "PUT", "DELETE", "PATCH"])
 def proxy_comfyui(path):
-    """Proxy requests to ComfyUI."""
+    """Proxy requests to ComfyUI at root path."""
+    # Don't proxy manager routes
+    if path.startswith("manager"):
+        return Response("Not found", status=404)
+
     if not ensure_comfyui_running():
-        return Response("ComfyUI failed to start", status=503)
+        # Show a nice "starting" page instead of error
+        return Response(
+            """
+            <!DOCTYPE html>
+            <html>
+            <head>
+                <title>Starting ComfyUI...</title>
+                <meta http-equiv="refresh" content="3">
+                <style>
+                    body {
+                        font-family: system-ui;
+                        display: flex;
+                        align-items: center;
+                        justify-content: center;
+                        height: 100vh;
+                        margin: 0;
+                        background: #1a1a2e;
+                        color: #eee;
+                    }
+                    .loader { text-align: center; }
+                    .spinner {
+                        width: 50px;
+                        height: 50px;
+                        border: 4px solid #333;
+                        border-top-color: #4ade80;
+                        border-radius: 50%;
+                        animation: spin 1s linear infinite;
+                        margin: 0 auto 20px;
+                    }
+                    @keyframes spin { to { transform: rotate(360deg); } }
+                </style>
+            </head>
+            <body>
+                <div class="loader">
+                    <div class="spinner"></div>
+                    <h2>Starting ComfyUI...</h2>
+                    <p>This page will refresh automatically.</p>
+                    <p><a href="/manager/" style="color: #4ade80;">Go to Manager</a></p>
+                </div>
+            </body>
+            </html>
+            """,
+            status=503,
+            content_type="text/html"
+        )
 
     # Build target URL
     target_url = f"http://{COMFYUI_HOST}:{COMFYUI_PORT}/{path}"
@@ -358,5 +408,7 @@ if __name__ == "__main__":
     logger.info(f"Starting ComfyUI Manager on port {MANAGER_PORT}")
     logger.info(f"ComfyUI path: {COMFYUI_PATH}")
     logger.info(f"Idle timeout: {IDLE_TIMEOUT}s")
+    logger.info(f"Manager UI: http://localhost:{MANAGER_PORT}/manager/")
+    logger.info(f"ComfyUI: http://localhost:{MANAGER_PORT}/")
 
     app.run(host="0.0.0.0", port=MANAGER_PORT, threaded=True)
