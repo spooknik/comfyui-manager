@@ -1,0 +1,165 @@
+* {
+    box-sizing: border-box;
+    margin: 0;
+    padding: 0;
+}
+
+body {
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, sans-serif;
+    background: #1a1a2e;
+    color: #eee;
+    min-height: 100vh;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.container {
+    max-width: 500px;
+    width: 100%;
+    padding: 20px;
+}
+
+h1 {
+    text-align: center;
+    margin-bottom: 30px;
+    font-weight: 300;
+    font-size: 28px;
+}
+
+.status-card {
+    background: #16213e;
+    border-radius: 12px;
+    padding: 30px;
+    margin-bottom: 20px;
+}
+
+.status-indicator {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 12px;
+    margin-bottom: 30px;
+}
+
+.status-dot {
+    width: 16px;
+    height: 16px;
+    border-radius: 50%;
+    background: #666;
+    animation: pulse 2s infinite;
+}
+
+.status-indicator.running .status-dot {
+    background: #4ade80;
+}
+
+.status-indicator.starting .status-dot {
+    background: #fbbf24;
+}
+
+.status-indicator.stopped .status-dot {
+    background: #ef4444;
+    animation: none;
+}
+
+@keyframes pulse {
+    0%, 100% { opacity: 1; }
+    50% { opacity: 0.5; }
+}
+
+.status-text {
+    font-size: 24px;
+    font-weight: 500;
+}
+
+.stats {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 15px;
+}
+
+.stat {
+    text-align: center;
+}
+
+.stat-label {
+    display: block;
+    font-size: 12px;
+    color: #888;
+    margin-bottom: 5px;
+    text-transform: uppercase;
+}
+
+.stat-value {
+    font-size: 18px;
+    font-weight: 600;
+    font-variant-numeric: tabular-nums;
+}
+
+.actions {
+    display: flex;
+    gap: 10px;
+    margin-bottom: 20px;
+}
+
+.btn {
+    flex: 1;
+    padding: 14px 20px;
+    border: none;
+    border-radius: 8px;
+    font-size: 16px;
+    font-weight: 500;
+    cursor: pointer;
+    transition: all 0.2s;
+    text-align: center;
+    text-decoration: none;
+}
+
+.btn:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+}
+
+.btn-start {
+    background: #4ade80;
+    color: #000;
+}
+
+.btn-start:hover:not(:disabled) {
+    background: #22c55e;
+}
+
+.btn-stop {
+    background: #ef4444;
+    color: #fff;
+}
+
+.btn-stop:hover:not(:disabled) {
+    background: #dc2626;
+}
+
+.btn-open {
+    background: #3b82f6;
+    color: #fff;
+}
+
+.btn-open:hover:not(.disabled) {
+    background: #2563eb;
+}
+
+.btn-open.disabled {
+    opacity: 0.5;
+    pointer-events: none;
+}
+
+.info {
+    text-align: center;
+    color: #666;
+    font-size: 14px;
+    line-height: 1.8;
+}
+
+.info a {
+    color: #3b82f6;
+}

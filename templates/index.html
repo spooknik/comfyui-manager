@@ -1,0 +1,148 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>ComfyUI Manager</title>
+    <link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+    <div class="container">
+        <h1>ComfyUI Manager</h1>
+
+        <div class="status-card">
+            <div class="status-indicator" id="status-indicator">
+                <span class="status-dot"></span>
+                <span class="status-text" id="status-text">Loading...</span>
+            </div>
+
+            <div class="stats">
+                <div class="stat">
+                    <span class="stat-label">Uptime</span>
+                    <span class="stat-value" id="uptime">--</span>
+                </div>
+                <div class="stat">
+                    <span class="stat-label">Idle Time</span>
+                    <span class="stat-value" id="idle-time">--</span>
+                </div>
+                <div class="stat">
+                    <span class="stat-label">Auto-stop in</span>
+                    <span class="stat-value" id="time-until-stop">--</span>
+                </div>
+            </div>
+        </div>
+
+        <div class="actions">
+            <button id="start-btn" class="btn btn-start" onclick="startComfyUI()">Start</button>
+            <button id="stop-btn" class="btn btn-stop" onclick="stopComfyUI()">Stop</button>
+            <a href="/comfy/" target="_blank" class="btn btn-open" id="open-btn">Open ComfyUI</a>
+        </div>
+
+        <div class="info">
+            <p>ComfyUI will automatically stop after <span id="timeout-display">--</span> of inactivity.</p>
+            <p>Visiting <a href="/comfy/">/comfy/</a> will auto-start ComfyUI if stopped.</p>
+        </div>
+    </div>
+
+    <script>
+        let currentState = 'unknown';
+
+        function formatTime(seconds) {
+            if (seconds <= 0) return '--';
+            const mins = Math.floor(seconds / 60);
+            const secs = seconds % 60;
+            if (mins > 0) {
+                return `${mins}m ${secs}s`;
+            }
+            return `${secs}s`;
+        }
+
+        function updateUI(status) {
+            const indicator = document.getElementById('status-indicator');
+            const statusText = document.getElementById('status-text');
+            const startBtn = document.getElementById('start-btn');
+            const stopBtn = document.getElementById('stop-btn');
+            const openBtn = document.getElementById('open-btn');
+
+            currentState = status.state;
+
+            // Update status indicator
+            indicator.className = 'status-indicator ' + status.state;
+
+            switch (status.state) {
+                case 'running':
+                    statusText.textContent = 'Running';
+                    startBtn.disabled = true;
+                    stopBtn.disabled = false;
+                    openBtn.classList.remove('disabled');
+                    break;
+                case 'starting':
+                    statusText.textContent = 'Starting...';
+                    startBtn.disabled = true;
+                    stopBtn.disabled = true;
+                    openBtn.classList.add('disabled');
+                    break;
+                case 'stopped':
+                    statusText.textContent = 'Stopped';
+                    startBtn.disabled = false;
+                    stopBtn.disabled = true;
+                    openBtn.classList.add('disabled');
+                    break;
+            }
+
+            // Update stats
+            document.getElementById('uptime').textContent = formatTime(status.uptime);
+            document.getElementById('idle-time').textContent = formatTime(status.idle_time);
+            document.getElementById('time-until-stop').textContent =
+                status.state === 'running' ? formatTime(status.time_until_stop) : '--';
+            document.getElementById('timeout-display').textContent = formatTime(status.idle_timeout);
+        }
+
+        async function fetchStatus() {
+            try {
+                const response = await fetch('/manager/api/status');
+                const status = await response.json();
+                updateUI(status);
+            } catch (error) {
+                console.error('Failed to fetch status:', error);
+            }
+        }
+
+        async function startComfyUI() {
+            const btn = document.getElementById('start-btn');
+            btn.disabled = true;
+            btn.textContent = 'Starting...';
+
+            try {
+                const response = await fetch('/manager/api/start', { method: 'POST' });
+                const result = await response.json();
+                if (!result.success) {
+                    alert('Failed to start ComfyUI: ' + result.message);
+                }
+            } catch (error) {
+                alert('Error starting ComfyUI: ' + error);
+            }
+
+            btn.textContent = 'Start';
+            fetchStatus();
+        }
+
+        async function stopComfyUI() {
+            const btn = document.getElementById('stop-btn');
+            btn.disabled = true;
+
+            try {
+                await fetch('/manager/api/stop', { method: 'POST' });
+            } catch (error) {
+                console.error('Error stopping ComfyUI:', error);
+            }
+
+            fetchStatus();
+        }
+
+        // Initial fetch and periodic updates
+        fetchStatus();
+        setInterval(fetchStatus, 5000);
+    </script>
+</body>
+</html>
