@@ -27,11 +27,13 @@ class ComfyUIManager:
         self.last_activity = None
         self.lock = threading.Lock()
         self._monitor_thread = None
-        self._start_idle_monitor()
+        self._activity_thread = None
+        self._start_monitors()
 
-    def _start_idle_monitor(self):
-        """Start background thread to monitor idle time and auto-stop."""
-        def monitor():
+    def _start_monitors(self):
+        """Start background threads for idle monitoring and activity detection."""
+        # Idle monitor - checks if we should auto-stop
+        def idle_monitor():
             while True:
                 time.sleep(30)
                 with self.lock:
@@ -41,8 +43,35 @@ class ComfyUIManager:
                             logger.info(f"Idle timeout reached ({IDLE_TIMEOUT}s), stopping ComfyUI")
                             self._stop_internal()
 
-        self._monitor_thread = threading.Thread(target=monitor, daemon=True)
+        # Activity monitor - polls ComfyUI queue to detect activity
+        def activity_monitor():
+            while True:
+                time.sleep(10)  # Check every 10 seconds
+                with self.lock:
+                    if self.state == "running":
+                        if self._check_queue_activity():
+                            self.last_activity = time.time()
+
+        self._monitor_thread = threading.Thread(target=idle_monitor, daemon=True)
         self._monitor_thread.start()
+
+        self._activity_thread = threading.Thread(target=activity_monitor, daemon=True)
+        self._activity_thread.start()
+
+    def _check_queue_activity(self):
+        """Check if ComfyUI has active or pending jobs in the queue."""
+        try:
+            resp = requests.get(f"http://127.0.0.1:{COMFYUI_PORT}/queue", timeout=2)
+            if resp.status_code == 200:
+                data = resp.json()
+                running = data.get('queue_running', [])
+                pending = data.get('queue_pending', [])
+                if running or pending:
+                    logger.debug(f"Queue activity: {len(running)} running, {len(pending)} pending")
+                    return True
+        except requests.RequestException:
+            pass
+        return False
 
     def start(self):
         """Start ComfyUI process."""
@@ -162,12 +191,27 @@ class ComfyUIManager:
             idle_time = int(now - self.last_activity) if self.last_activity else 0
             time_until_stop = max(0, IDLE_TIMEOUT - idle_time) if self.state == "running" else 0
 
+            # Get queue info if running
+            queue_running = 0
+            queue_pending = 0
+            if self.state == "running":
+                try:
+                    resp = requests.get(f"http://127.0.0.1:{COMFYUI_PORT}/queue", timeout=2)
+                    if resp.status_code == 200:
+                        data = resp.json()
+                        queue_running = len(data.get('queue_running', []))
+                        queue_pending = len(data.get('queue_pending', []))
+                except requests.RequestException:
+                    pass
+
             return {
                 "state": self.state,
                 "uptime": uptime,
                 "idle_time": idle_time,
                 "time_until_stop": time_until_stop,
-                "idle_timeout": IDLE_TIMEOUT
+                "idle_timeout": IDLE_TIMEOUT,
+                "queue_running": queue_running,
+                "queue_pending": queue_pending
             }
 
 

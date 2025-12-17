@@ -22,8 +22,8 @@
                     <span class="stat-value" id="uptime">--</span>
                 </div>
                 <div class="stat">
-                    <span class="stat-label">Idle Time</span>
-                    <span class="stat-value" id="idle-time">--</span>
+                    <span class="stat-label">Queue</span>
+                    <span class="stat-value" id="queue-status">--</span>
                 </div>
                 <div class="stat">
                     <span class="stat-label">Auto-stop in</span>
@@ -109,7 +109,19 @@
 
             // Update stats
             document.getElementById('uptime').textContent = formatTime(status.uptime);
-            document.getElementById('idle-time').textContent = formatTime(status.idle_time);
+
+            // Queue status
+            if (status.state === 'running') {
+                const total = status.queue_running + status.queue_pending;
+                if (total > 0) {
+                    document.getElementById('queue-status').textContent = `${status.queue_running} / ${status.queue_pending}`;
+                } else {
+                    document.getElementById('queue-status').textContent = 'Idle';
+                }
+            } else {
+                document.getElementById('queue-status').textContent = '--';
+            }
+
             document.getElementById('time-until-stop').textContent =
                 status.state === 'running' ? formatTime(status.time_until_stop) : '--';
             document.getElementById('timeout-display').textContent = formatTime(status.idle_timeout);
