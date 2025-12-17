@@ -52,11 +52,34 @@ class ComfyUIManager:
                         if self._check_queue_activity():
                             self.last_activity = time.time()
 
+        # Startup monitor - checks if ComfyUI is ready when in "starting" state
+        def startup_monitor():
+            while True:
+                time.sleep(2)  # Check every 2 seconds
+                with self.lock:
+                    if self.state == "starting":
+                        if self._check_comfyui_ready():
+                            self.state = "running"
+                            self.start_time = time.time()
+                            self.last_activity = time.time()
+                            logger.info("ComfyUI is ready (detected by startup monitor)")
+
         self._monitor_thread = threading.Thread(target=idle_monitor, daemon=True)
         self._monitor_thread.start()
 
         self._activity_thread = threading.Thread(target=activity_monitor, daemon=True)
         self._activity_thread.start()
+
+        self._startup_thread = threading.Thread(target=startup_monitor, daemon=True)
+        self._startup_thread.start()
+
+    def _check_comfyui_ready(self):
+        """Check if ComfyUI is responding to requests."""
+        try:
+            resp = requests.get(f"http://127.0.0.1:{COMFYUI_PORT}/system_stats", timeout=2)
+            return resp.status_code == 200
+        except requests.RequestException:
+            return False
 
     def _check_queue_activity(self):
         """Check if ComfyUI has active or pending jobs in the queue."""
