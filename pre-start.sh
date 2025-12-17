@@ -38,6 +38,15 @@ fi
 
 echo "[INFO] Found ComfyUI Manager at: ${MANAGER_DIR}"
 
+# Install the ping extension into ComfyUI's web extensions folder
+PING_SCRIPT="${MANAGER_DIR}/comfyui-manager-ping.js"
+EXTENSIONS_DIR="/root/ComfyUI/web/extensions"
+if [ -f "${PING_SCRIPT}" ]; then
+    mkdir -p "${EXTENSIONS_DIR}"
+    cp "${PING_SCRIPT}" "${EXTENSIONS_DIR}/"
+    echo "[INFO] Installed activity ping extension to ${EXTENSIONS_DIR}/"
+fi
+
 # Set manager environment variables
 export COMFYUI_PATH="/root/ComfyUI"
 export COMFYUI_PORT=8188
