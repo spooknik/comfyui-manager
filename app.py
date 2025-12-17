@@ -5,7 +5,7 @@ import signal
 import subprocess
 import threading
 import logging
-from flask import Flask, request, Response, render_template, jsonify
+from flask import Flask, request, Response, render_template, jsonify, redirect
 import requests
 
 from config import (
@@ -279,116 +279,26 @@ def manager_static(path):
 @app.route("/")
 def landing():
     """Landing page - starts ComfyUI and redirects to it."""
-    if not manager.is_running():
-        status = manager.get_status()
-        if status["state"] == "stopped":
-            logger.info("Auto-starting ComfyUI on landing page visit")
-            manager.start()
-            # Show starting page
-            return Response(
-                f"""
-                <!DOCTYPE html>
-                <html>
-                <head>
-                    <title>Starting ComfyUI...</title>
-                    <meta http-equiv="refresh" content="3">
-                    <style>
-                        body {{
-                            font-family: system-ui;
-                            display: flex;
-                            align-items: center;
-                            justify-content: center;
-                            height: 100vh;
-                            margin: 0;
-                            background: #1a1a2e;
-                            color: #eee;
-                        }}
-                        .loader {{ text-align: center; }}
-                        .spinner {{
-                            width: 50px;
-                            height: 50px;
-                            border: 4px solid #333;
-                            border-top-color: #4ade80;
-                            border-radius: 50%;
-                            animation: spin 1s linear infinite;
-                            margin: 0 auto 20px;
-                        }}
-                        @keyframes spin {{ to {{ transform: rotate(360deg); }} }}
-                        a {{ color: #4ade80; }}
-                    </style>
-                </head>
-                <body>
-                    <div class="loader">
-                        <div class="spinner"></div>
-                        <h2>Starting ComfyUI...</h2>
-                        <p>This page will refresh automatically.</p>
-                        <p><a href="/manager/">Go to Manager</a></p>
-                    </div>
-                </body>
-                </html>
-                """,
-                status=200,
-                content_type="text/html"
-            )
-        elif status["state"] == "starting":
-            # Still starting, show wait page
-            return Response(
-                f"""
-                <!DOCTYPE html>
-                <html>
-                <head>
-                    <title>Starting ComfyUI...</title>
-                    <meta http-equiv="refresh" content="2">
-                    <style>
-                        body {{
-                            font-family: system-ui;
-                            display: flex;
-                            align-items: center;
-                            justify-content: center;
-                            height: 100vh;
-                            margin: 0;
-                            background: #1a1a2e;
-                            color: #eee;
-                        }}
-                        .loader {{ text-align: center; }}
-                        .spinner {{
-                            width: 50px;
-                            height: 50px;
-                            border: 4px solid #333;
-                            border-top-color: #4ade80;
-                            border-radius: 50%;
-                            animation: spin 1s linear infinite;
-                            margin: 0 auto 20px;
-                        }}
-                        @keyframes spin {{ to {{ transform: rotate(360deg); }} }}
-                        a {{ color: #4ade80; }}
-                    </style>
-                </head>
-                <body>
-                    <div class="loader">
-                        <div class="spinner"></div>
-                        <h2>ComfyUI is starting...</h2>
-                        <p>Please wait, this page will redirect when ready.</p>
-                        <p><a href="/manager/">Go to Manager</a></p>
-                    </div>
-                </body>
-                </html>
-                """,
-                status=200,
-                content_type="text/html"
-            )
-
-    # ComfyUI is running, redirect to it directly
-    manager.reset_idle_timer()
-    # Redirect to ComfyUI's actual port
+    status = manager.get_status()
     host = request.host.split(':')[0]  # Get hostname without port
+
+    # If running, redirect immediately
+    if status["state"] == "running":
+        manager.reset_idle_timer()
+        return redirect(f"http://{host}:{COMFYUI_PORT}/")
+
+    # If stopped, start it
+    if status["state"] == "stopped":
+        logger.info("Auto-starting ComfyUI on landing page visit")
+        manager.start()
+
+    # Show starting page with JavaScript polling for better reliability
     return Response(
         f"""
         <!DOCTYPE html>
         <html>
         <head>
-            <title>Redirecting to ComfyUI...</title>
-            <meta http-equiv="refresh" content="0; url=http://{host}:{COMFYUI_PORT}/">
+            <title>Starting ComfyUI...</title>
             <style>
                 body {{
                     font-family: system-ui;
@@ -400,13 +310,52 @@ def landing():
                     background: #1a1a2e;
                     color: #eee;
                 }}
+                .loader {{ text-align: center; }}
+                .spinner {{
+                    width: 50px;
+                    height: 50px;
+                    border: 4px solid #333;
+                    border-top-color: #4ade80;
+                    border-radius: 50%;
+                    animation: spin 1s linear infinite;
+                    margin: 0 auto 20px;
+                }}
+                @keyframes spin {{ to {{ transform: rotate(360deg); }} }}
                 a {{ color: #4ade80; }}
+                #status {{ margin-top: 10px; font-size: 14px; color: #888; }}
             </style>
         </head>
         <body>
-            <div>
-                <p>Redirecting to <a href="http://{host}:{COMFYUI_PORT}/">ComfyUI</a>...</p>
+            <div class="loader">
+                <div class="spinner"></div>
+                <h2>Starting ComfyUI...</h2>
+                <p>Please wait, you will be redirected automatically.</p>
+                <p id="status">Checking status...</p>
+                <p><a href="/manager/">Go to Manager</a></p>
             </div>
+            <script>
+                const comfyuiUrl = "http://{host}:{COMFYUI_PORT}/";
+
+                async function checkStatus() {{
+                    try {{
+                        const response = await fetch('/manager/api/status');
+                        const data = await response.json();
+                        document.getElementById('status').textContent = 'Status: ' + data.state;
+
+                        if (data.state === 'running') {{
+                            document.getElementById('status').textContent = 'Redirecting...';
+                            window.location.href = comfyuiUrl;
+                        }} else {{
+                            setTimeout(checkStatus, 2000);
+                        }}
+                    }} catch (e) {{
+                        document.getElementById('status').textContent = 'Checking...';
+                        setTimeout(checkStatus, 2000);
+                    }}
+                }}
+
+                checkStatus();
+            </script>
         </body>
         </html>
         """,
