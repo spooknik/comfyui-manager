@@ -350,7 +350,10 @@ def ws_proxy(ws):
                     if data is None:
                         break
                     manager.reset_idle_timer()
-                    comfy_ws.send(data)
+                    if isinstance(data, bytes):
+                        comfy_ws.send_binary(data)
+                    else:
+                        comfy_ws.send(data)
                 except TimeoutError:
                     continue
         except Exception as e:
@@ -364,11 +367,17 @@ def ws_proxy(ws):
             while not stop_event.is_set():
                 try:
                     comfy_ws.settimeout(1)
-                    data = comfy_ws.recv()
+                    opcode, data = comfy_ws.recv_data(control_frame=False)
                     if data is None:
                         break
                     manager.reset_idle_timer()
-                    ws.send(data)
+                    # opcode 1 = text, 2 = binary
+                    if opcode == 2:  # Binary
+                        ws.send(data)
+                    else:  # Text
+                        if isinstance(data, bytes):
+                            data = data.decode('utf-8')
+                        ws.send(data)
                 except TimeoutError:
                     continue
                 except WebSocketConnectionClosedException:
