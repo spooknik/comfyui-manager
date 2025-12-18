@@ -7,9 +7,15 @@ import { app } from "../../scripts/app.js";
  */
 
 const PING_INTERVAL = 60000; // Ping every 60 seconds
-const MANAGER_PING_URL = '/manager/api/ping';
+const MANAGER_PORT = 5000;
 
 let pingInterval = null;
+
+function getManagerPingUrl() {
+    // Manager runs on port 5000, same host as ComfyUI
+    const host = window.location.hostname;
+    return `http://${host}:${MANAGER_PORT}/manager/api/ping`;
+}
 
 async function ping() {
     // Only ping if the tab is visible
@@ -18,12 +24,16 @@ async function ping() {
     }
 
     try {
-        await fetch(MANAGER_PING_URL, {
+        const url = getManagerPingUrl();
+        await fetch(url, {
             method: 'POST',
+            mode: 'cors',
             signal: AbortSignal.timeout(5000)
         });
+        console.log('[ComfyUI Manager] Ping sent');
     } catch (e) {
         // Silently ignore errors - manager might not be running
+        console.log('[ComfyUI Manager] Ping failed (manager may not be running)');
     }
 }
 

@@ -389,11 +389,16 @@ def landing():
 
 # --- Activity tracking endpoint (called by ComfyUI frontend) ---
 
-@app.route("/manager/api/ping", methods=["POST", "GET"])
+@app.route("/manager/api/ping", methods=["POST", "GET", "OPTIONS"])
 def api_ping():
     """Reset idle timer - can be called periodically by frontend."""
     manager.reset_idle_timer()
-    return jsonify({"success": True})
+    response = jsonify({"success": True})
+    # Allow CORS from any origin (needed because ComfyUI runs on different port)
+    response.headers.add('Access-Control-Allow-Origin', '*')
+    response.headers.add('Access-Control-Allow-Methods', 'GET, POST, OPTIONS')
+    response.headers.add('Access-Control-Allow-Headers', 'Content-Type')
+    return response
 
 
 def shutdown_handler(signum, frame):
