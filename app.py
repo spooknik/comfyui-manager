@@ -391,9 +391,22 @@ def landing():
 
 @app.route("/manager/api/ping", methods=["POST", "GET", "OPTIONS"])
 def api_ping():
-    """Reset idle timer - can be called periodically by frontend."""
-    manager.reset_idle_timer()
-    response = jsonify({"success": True})
+    """Reset idle timer and auto-start ComfyUI if stopped."""
+    status = manager.get_status()
+
+    # Auto-start if stopped
+    if status["state"] == "stopped":
+        logger.info("Ping received while stopped - auto-starting ComfyUI")
+        manager.start()
+
+    # Reset idle timer if running
+    if status["state"] == "running":
+        manager.reset_idle_timer()
+
+    response = jsonify({
+        "success": True,
+        "state": manager.get_status()["state"]
+    })
     # Allow CORS from any origin (needed because ComfyUI runs on different port)
     response.headers.add('Access-Control-Allow-Origin', '*')
     response.headers.add('Access-Control-Allow-Methods', 'GET, POST, OPTIONS')
